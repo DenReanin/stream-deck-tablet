@@ -9,6 +9,9 @@
   const toast = document.getElementById('toast');
   const dialog = document.getElementById('edit-dialog');
   const pageDialog = document.getElementById('page-dialog');
+  const tmplBtn = document.getElementById('tmpl-btn');
+  const tmplDialog = document.getElementById('tmpl-dialog');
+  const tmplList = document.getElementById('tmpl-list');
 
   // --- State --------------------------------------------------------------
   let ws = null;
@@ -375,7 +378,25 @@
       addInput('ed-p-path', 'Ruta al script (.bat/.ps1/.cmd)', 'text');
     } else if (t === 'open_url') {
       addInput('ed-p-url', 'URL', 'text');
+    } else if (t === 'text_input') {
+      addTextarea('ed-p-text', 'Texto a escribir', 3);
+    } else if (t === 'delay') {
+      addInput('ed-p-ms', 'Pausa (milisegundos)', 'number');
+    } else if (t === 'sequence') {
+      addTextarea('ed-p-steps', 'Pasos en JSON (lista de acciones)', 8,
+        '[\n  { "type": "hotkey", "params": { "keys": ["ctrl","shift","m"] } },\n  { "type": "delay", "params": { "ms": 200 } },\n  { "type": "text_input", "params": { "text": "Hola" } }\n]');
     }
+  }
+
+  function addTextarea(id, labelText, rows, placeholder = '') {
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const ta = document.createElement('textarea');
+    ta.id = id;
+    ta.rows = rows;
+    if (placeholder) ta.placeholder = placeholder;
+    label.appendChild(ta);
+    edParams.appendChild(label);
   }
 
   function addInput(id, labelText, type) {
@@ -403,6 +424,15 @@
       document.getElementById('ed-p-path').value = params.path || '';
     } else if (t === 'open_url') {
       document.getElementById('ed-p-url').value = params.url || '';
+    } else if (t === 'text_input') {
+      document.getElementById('ed-p-text').value = params.text || '';
+    } else if (t === 'delay') {
+      document.getElementById('ed-p-ms').value = params.ms ?? 200;
+    } else if (t === 'sequence') {
+      const steps = params.steps;
+      if (Array.isArray(steps) && steps.length > 0) {
+        document.getElementById('ed-p-steps').value = JSON.stringify(steps, null, 2);
+      }
     }
   }
 
@@ -432,6 +462,25 @@
     }
     if (t === 'open_url') {
       return { url: document.getElementById('ed-p-url').value.trim() };
+    }
+    if (t === 'text_input') {
+      return { text: document.getElementById('ed-p-text').value };
+    }
+    if (t === 'delay') {
+      const ms = parseInt(document.getElementById('ed-p-ms').value, 10);
+      return { ms: Number.isFinite(ms) ? ms : 200 };
+    }
+    if (t === 'sequence') {
+      const raw = document.getElementById('ed-p-steps').value.trim();
+      if (!raw) return { steps: [] };
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('debe ser un array');
+        return { steps: parsed };
+      } catch (e) {
+        showToast('JSON inválido en la secuencia: ' + e.message);
+        throw e;
+      }
     }
     return {};
   }
@@ -514,11 +563,75 @@
     editMode = !editMode;
     document.body.classList.toggle('editing', editMode);
     editBtn.textContent = editMode ? '✓' : '✎';
+    tmplBtn.classList.toggle('hidden', !editMode);
     if (editMode) {
       showToast('Edición: toca botón para editar, mantén pulsado para mover, toca pestaña activa para renombrar');
     }
     render();
   });
+
+  // --- Plantillas ---------------------------------------------------------
+
+  tmplBtn.addEventListener('click', openTemplates);
+
+  async function openTemplates() {
+    tmplList.innerHTML = '<p class="muted">Cargando…</p>';
+    tmplDialog.showModal();
+    try {
+      const r = await fetch('/api/templates');
+      const data = await r.json();
+      renderTemplateList(data.templates || []);
+    } catch (e) {
+      tmplList.innerHTML = '<p class="muted">Error al cargar plantillas</p>';
+    }
+  }
+
+  function renderTemplateList(items) {
+    tmplList.innerHTML = '';
+    if (items.length === 0) {
+      tmplList.innerHTML = '<p class="muted">No hay plantillas disponibles</p>';
+      return;
+    }
+    for (const t of items) {
+      const el = document.createElement('div');
+      el.className = 'tmpl-item';
+      el.innerHTML = `
+        <h3>${escapeHtml(t.name)}<span class="tmpl-count">${t.button_count} botones</span></h3>
+        <p>${escapeHtml(t.description || '')}</p>
+        <div class="tmpl-actions">
+          <button type="button" data-id="${escapeHtml(t.id)}">Aplicar como página</button>
+        </div>
+      `;
+      el.querySelector('button').addEventListener('click', () => applyTemplate(t.id, t.name));
+      tmplList.appendChild(el);
+    }
+  }
+
+  async function applyTemplate(id, name) {
+    try {
+      const r = await fetch(`/api/templates/${encodeURIComponent(id)}/apply?mode=new_page`, {
+        method: 'POST',
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: r.statusText }));
+        showToast(`Error: ${err.detail || 'no se pudo aplicar'}`);
+        return;
+      }
+      config = await r.json();
+      currentPageIdx = pages().length - 1;
+      tmplDialog.close();
+      render();
+      showToast(`Plantilla "${name}" aplicada`);
+    } catch (e) {
+      showToast('Error de red al aplicar la plantilla');
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
 
   // --- Swipe horizontal entre páginas -------------------------------------
 

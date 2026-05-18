@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import actions, config
+from . import actions, config, templates as tmpl_module
 from .soundpad_client import SoundpadError, get_client
 
 logging.basicConfig(
@@ -101,6 +101,75 @@ def autogen_config() -> dict:
     return new
 
 
+# --- Templates -------------------------------------------------------------
+
+@app.get("/api/templates")
+def list_templates() -> dict:
+    return {
+        "templates": [
+            {
+                "id": t["id"],
+                "name": t["name"],
+                "description": t["description"],
+                "button_count": len(t["buttons"]),
+            }
+            for t in tmpl_module.TEMPLATES
+        ]
+    }
+
+
+@app.post("/api/templates/{template_id}/apply")
+def apply_template(template_id: str, mode: str = "new_page") -> dict:
+    """Aplicar una plantilla.
+
+    mode='new_page'      → crea una página nueva con los botones de la plantilla
+    mode='current_page'  → añade los botones a los slots vacíos de la página actual
+    """
+    template = tmpl_module.get_by_id(template_id)
+    if not template:
+        raise HTTPException(404, f"Template not found: {template_id}")
+    cfg = config.load()
+    grid = cfg.get("grid", {"cols": 4, "rows": 4})
+    capacity = grid["cols"] * grid["rows"]
+    template_buttons = template["buttons"]
+
+    if mode == "new_page":
+        if len(template_buttons) > capacity:
+            raise HTTPException(
+                400,
+                f"Template has {len(template_buttons)} buttons but grid only holds {capacity}",
+            )
+        new_page = {
+            "id": config.next_page_id(cfg),
+            "name": template["name"],
+            "buttons": [
+                {**btn, "id": f"b{i + 1}"}
+                for i, btn in enumerate(template_buttons)
+            ],
+        }
+        cfg.setdefault("pages", []).append(new_page)
+    elif mode == "current_page":
+        page_id = None  # primera por defecto si no se especifica
+        page = config.find_page(cfg, page_id)
+        if page is None:
+            raise HTTPException(404, "No page available")
+        used = {b["id"] for b in page.get("buttons", [])}
+        free_slots = [f"b{i + 1}" for i in range(capacity) if f"b{i + 1}" not in used]
+        if len(free_slots) < len(template_buttons):
+            raise HTTPException(
+                400,
+                f"Not enough free slots ({len(free_slots)} free, {len(template_buttons)} needed)",
+            )
+        page.setdefault("buttons", []).extend(
+            {**btn, "id": slot} for slot, btn in zip(free_slots, template_buttons)
+        )
+    else:
+        raise HTTPException(400, f"Unknown mode: {mode}")
+
+    config.save(cfg)
+    return cfg
+
+
 # --- WebSocket -------------------------------------------------------------
 
 _clients: set[WebSocket] = set()
@@ -164,13 +233,13 @@ async def _handle_message(ws: WebSocket, data: dict) -> None:
             await ws.send_json({"type": "press_result", "button_id": button_id,
                                 "ok": False, "error": "button not found"})
             return
-        result = actions.execute(button.get("action", {}))
+        result = await actions.execute_async(button.get("action", {}))
         await ws.send_json({"type": "press_result", "button_id": button_id,
                             "page_id": page.get("id"), **result})
         return
     if msg_type == "action":
         # Acción ad-hoc sin botón guardado (útil para tests).
-        result = actions.execute(data.get("action", {}))
+        result = await actions.execute_async(data.get("action", {}))
         await ws.send_json({"type": "action_result", **result})
         return
     await ws.send_json({"type": "error", "message": f"unknown message type: {msg_type}"})

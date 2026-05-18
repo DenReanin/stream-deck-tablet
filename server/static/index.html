@@ -21,6 +21,7 @@
       <span id="conn-dot" class="dot dot-off"></span>
       <span id="conn-text">conectando…</span>
     </div>
+    <button id="tmpl-btn" class="icon-btn hidden" title="Plantillas">📋</button>
     <button id="edit-btn" class="icon-btn" title="Editar">✎</button>
   </header>
 
@@ -52,6 +53,9 @@
           <option value="launch_app">Lanzar aplicación</option>
           <option value="run_script">Ejecutar script</option>
           <option value="open_url">Abrir URL</option>
+          <option value="text_input">Escribir texto</option>
+          <option value="delay">Pausa (ms)</option>
+          <option value="sequence">Secuencia (JSON)</option>
         </select>
       </label>
 
@@ -78,6 +82,18 @@
         <button id="pg-delete" value="delete" class="danger">Borrar página</button>
         <button id="pg-cancel" value="cancel">Cancelar</button>
         <button id="pg-save" value="save" class="primary">Guardar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: selector de plantillas -->
+  <dialog id="tmpl-dialog" class="edit-dialog tmpl-dialog">
+    <form method="dialog">
+      <h2>Plantillas</h2>
+      <p class="muted">Aplica una plantilla como página nueva.</p>
+      <div id="tmpl-list" class="tmpl-list"></div>
+      <menu>
+        <button id="tmpl-cancel" value="cancel">Cerrar</button>
       </menu>
     </form>
   </dialog>

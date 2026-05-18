@@ -36,6 +36,18 @@ SPECIAL_KEYS = {
     "f9": Key.f9, "f10": Key.f10, "f11": Key.f11, "f12": Key.f12,
     "f13": Key.f13, "f14": Key.f14, "f15": Key.f15, "f16": Key.f16,
     "f17": Key.f17, "f18": Key.f18, "f19": Key.f19, "f20": Key.f20,
+    # Multimedia
+    "play_pause": Key.media_play_pause,
+    "media_play": Key.media_play_pause,
+    "media_play_pause": Key.media_play_pause,
+    "next_track": Key.media_next,
+    "media_next": Key.media_next,
+    "previous_track": Key.media_previous,
+    "media_previous": Key.media_previous,
+    "volume_up": Key.media_volume_up,
+    "volume_down": Key.media_volume_down,
+    "volume_mute": Key.media_volume_mute,
+    "mute": Key.media_volume_mute,
 }
 
 
