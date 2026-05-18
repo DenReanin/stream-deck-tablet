@@ -16,6 +16,7 @@
 <body>
   <header>
     <div class="brand">Stream Deck</div>
+    <nav id="tabs" class="tabs"></nav>
     <div class="status">
       <span id="conn-dot" class="dot dot-off"></span>
       <span id="conn-text">conectando…</span>
@@ -27,6 +28,7 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <!-- Diálogo: editar botón -->
   <dialog id="edit-dialog" class="edit-dialog">
     <form method="dialog">
       <h2>Editar botón</h2>
@@ -56,8 +58,26 @@
       <div id="ed-params"></div>
 
       <menu>
+        <button id="ed-delete" value="delete" class="danger">Vaciar</button>
         <button id="ed-cancel" value="cancel">Cancelar</button>
         <button id="ed-save" value="save" class="primary">Guardar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: gestión de páginas -->
+  <dialog id="page-dialog" class="edit-dialog">
+    <form method="dialog">
+      <h2 id="pg-title">Página</h2>
+
+      <label>Nombre
+        <input id="pg-name" type="text" maxlength="24" />
+      </label>
+
+      <menu>
+        <button id="pg-delete" value="delete" class="danger">Borrar página</button>
+        <button id="pg-cancel" value="cancel">Cancelar</button>
+        <button id="pg-save" value="save" class="primary">Guardar</button>
       </menu>
     </form>
   </dialog>

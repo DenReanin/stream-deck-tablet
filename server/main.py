@@ -149,9 +149,15 @@ async def _handle_message(ws: WebSocket, data: dict) -> None:
         return
     if msg_type == "press":
         button_id = data.get("button_id")
+        page_id = data.get("page_id")
         cfg = config.load()
+        page = config.find_page(cfg, page_id)
+        if page is None:
+            await ws.send_json({"type": "press_result", "button_id": button_id,
+                                "ok": False, "error": "page not found"})
+            return
         button = next(
-            (b for b in cfg.get("buttons", []) if b.get("id") == button_id),
+            (b for b in page.get("buttons", []) if b.get("id") == button_id),
             None,
         )
         if button is None:
@@ -159,7 +165,8 @@ async def _handle_message(ws: WebSocket, data: dict) -> None:
                                 "ok": False, "error": "button not found"})
             return
         result = actions.execute(button.get("action", {}))
-        await ws.send_json({"type": "press_result", "button_id": button_id, **result})
+        await ws.send_json({"type": "press_result", "button_id": button_id,
+                            "page_id": page.get("id"), **result})
         return
     if msg_type == "action":
         # Acción ad-hoc sin botón guardado (útil para tests).

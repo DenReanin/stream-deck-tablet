@@ -7,9 +7,10 @@
   --danger: #ef4444;
   --ok: #10b981;
   --gap: 10px;
+  --header-h: 52px;
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 html, body {
   margin: 0;
@@ -26,10 +27,11 @@ html, body {
 header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
+  gap: 10px;
+  padding: 8px 12px;
   background: var(--panel);
   border-bottom: 1px solid rgba(255,255,255,.05);
+  height: var(--header-h);
 }
 
 .brand {
@@ -37,15 +39,49 @@ header {
   font-size: 14px;
   letter-spacing: .5px;
   color: var(--muted);
+  flex-shrink: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.08);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.tab:active { transform: scale(.96); }
+.tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.tab-add {
+  font-size: 18px;
+  padding: 4px 12px;
+  color: var(--muted);
 }
 
 .status {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   font-size: 13px;
   color: var(--muted);
+  flex-shrink: 0;
 }
 
 .dot {
@@ -64,6 +100,7 @@ header {
   padding: 6px 12px;
   font-size: 16px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 .icon-btn:active { background: rgba(255,255,255,.05); }
 
@@ -71,9 +108,10 @@ header {
   display: grid;
   gap: var(--gap);
   padding: var(--gap);
-  height: calc(100% - 49px);
+  height: calc(100% - var(--header-h));
   grid-template-columns: repeat(var(--cols, 4), 1fr);
   grid-template-rows: repeat(var(--rows, 4), 1fr);
+  touch-action: pan-y;
 }
 
 .tile {
@@ -96,6 +134,7 @@ header {
   position: relative;
   overflow: hidden;
   word-break: break-word;
+  touch-action: none;
 }
 
 .tile:active {
@@ -122,6 +161,47 @@ header {
   to { opacity: 0; }
 }
 
+/* --- Drag & drop --- */
+.tile.dragging-source {
+  opacity: .25;
+  transform: scale(.96);
+}
+
+.tile.drop-target {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.drag-ghost {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: .85;
+  transform: scale(1.05);
+  box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  border-radius: 14px;
+  transition: none;
+}
+
+/* --- Modo edición --- */
+body.editing .tile {
+  outline: 2px dashed rgba(255,255,255,.18);
+  outline-offset: -4px;
+}
+body.editing .tile.dragging-source,
+body.editing .tile.drop-target { outline-style: solid; }
+
+body.editing .tab.active {
+  position: relative;
+}
+body.editing .tab.active::after {
+  content: '✎';
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: .8;
+}
+
+/* --- Toast --- */
 .toast {
   position: fixed;
   bottom: 18px;
@@ -133,9 +213,11 @@ header {
   border-radius: 8px;
   font-size: 13px;
   z-index: 99;
-  max-width: 80vw;
+  max-width: 90vw;
+  text-align: center;
 }
 
+/* --- Diálogos --- */
 .edit-dialog {
   background: var(--panel);
   color: var(--text);
@@ -145,16 +227,13 @@ header {
   width: min(420px, 90vw);
 }
 .edit-dialog::backdrop { background: rgba(0,0,0,.6); }
-
 .edit-dialog h2 { margin: 0 0 12px; font-size: 18px; }
-
 .edit-dialog label {
   display: block;
   font-size: 13px;
   color: var(--muted);
   margin: 10px 0 4px;
 }
-
 .edit-dialog input[type=text],
 .edit-dialog input[type=number],
 .edit-dialog select {
@@ -166,19 +245,17 @@ header {
   padding: 8px 10px;
   font-size: 14px;
 }
-
 .edit-dialog input[type=color] {
   width: 60px; height: 32px; border: none; background: transparent; padding: 0;
 }
-
 .edit-dialog menu {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   padding: 0;
   margin: 18px 0 0;
+  flex-wrap: wrap;
 }
-
 .edit-dialog button {
   background: transparent;
   color: var(--text);
@@ -188,14 +265,16 @@ header {
   font-size: 14px;
   cursor: pointer;
 }
-
 .edit-dialog button.primary {
   background: var(--accent);
   border-color: var(--accent);
 }
-
-/* En modo edición, los tiles muestran un check de selección */
-body.editing .tile {
-  outline: 2px dashed rgba(255,255,255,.15);
-  outline-offset: -4px;
+.edit-dialog button.danger {
+  color: var(--danger);
+  border-color: rgba(239,68,68,.4);
+  margin-right: auto;
+}
+.edit-dialog button.danger:disabled {
+  opacity: .35;
+  cursor: not-allowed;
 }

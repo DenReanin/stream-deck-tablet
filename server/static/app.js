@@ -1,17 +1,23 @@
-// Stream Deck PWA — cliente WebSocket + renderizado del grid.
+// Stream Deck PWA — cliente WebSocket + grid + páginas + drag&drop.
 (() => {
+  // --- DOM refs -----------------------------------------------------------
   const grid = document.getElementById('grid');
+  const tabsEl = document.getElementById('tabs');
   const connDot = document.getElementById('conn-dot');
   const connText = document.getElementById('conn-text');
   const editBtn = document.getElementById('edit-btn');
   const toast = document.getElementById('toast');
   const dialog = document.getElementById('edit-dialog');
+  const pageDialog = document.getElementById('page-dialog');
 
+  // --- State --------------------------------------------------------------
   let ws = null;
-  let config = { grid: { cols: 4, rows: 4 }, buttons: [] };
+  let config = { grid: { cols: 4, rows: 4 }, pages: [] };
   let sounds = [];
+  let currentPageIdx = 0;
   let editMode = false;
   let editingId = null;
+  let editingPageIdx = -1;
   let toastTimer = null;
 
   // --- WebSocket ----------------------------------------------------------
@@ -23,21 +29,13 @@
 
   function connectWs() {
     setConn(false, 'conectando…');
-    try {
-      ws = new WebSocket(wsUrl());
-    } catch (e) {
-      scheduleReconnect();
-      return;
-    }
+    try { ws = new WebSocket(wsUrl()); }
+    catch { scheduleReconnect(); return; }
     ws.onopen = () => setConn(true, 'conectado');
-    ws.onclose = () => {
-      setConn(false, 'desconectado');
-      scheduleReconnect();
-    };
-    ws.onerror = () => { /* close handler se encarga */ };
+    ws.onclose = () => { setConn(false, 'desconectado'); scheduleReconnect(); };
+    ws.onerror = () => {};
     ws.onmessage = (ev) => {
-      let msg;
-      try { msg = JSON.parse(ev.data); } catch { return; }
+      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
       handleWsMessage(msg);
     };
   }
@@ -45,10 +43,7 @@
   let reconnectTimer = null;
   function scheduleReconnect() {
     if (reconnectTimer) return;
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connectWs();
-    }, 1500);
+    reconnectTimer = setTimeout(() => { reconnectTimer = null; connectWs(); }, 1500);
   }
 
   function handleWsMessage(msg) {
@@ -57,14 +52,15 @@
         setConn(true, msg.soundpad_connected ? 'conectado' : 'sin Soundpad');
         break;
       case 'press_result':
-        if (msg.ok === false) showToast(`Error: ${msg.error || 'acción falló'}`);
-        break;
       case 'action_result':
         if (msg.ok === false) showToast(`Error: ${msg.error || 'acción falló'}`);
         break;
       case 'config_updated':
+        // No sobrescribir si el cambio viene de esta misma sesión (evita re-render molesto)
+        // Aquí lo aceptamos directamente porque es schema completo
         config = msg.config;
-        renderGrid();
+        clampCurrentPage();
+        render();
         break;
     }
   }
@@ -79,11 +75,12 @@
   async function loadConfig() {
     const r = await fetch('/api/config');
     config = await r.json();
-    if (!config.buttons || config.buttons.length === 0) {
-      // Primer arranque: ofrecer auto-generar desde Soundpad
+    const hasAnyButton = (config.pages || []).some(p => (p.buttons || []).length > 0);
+    if (!hasAnyButton) {
       const auto = await fetch('/api/config/autogen', { method: 'POST' });
       if (auto.ok) config = await auto.json();
     }
+    clampCurrentPage();
   }
 
   async function loadSounds() {
@@ -103,7 +100,73 @@
     });
   }
 
-  // --- Grid rendering -----------------------------------------------------
+  // --- Page helpers -------------------------------------------------------
+
+  function pages() { return config.pages || []; }
+  function currentPage() { return pages()[currentPageIdx] || null; }
+
+  function clampCurrentPage() {
+    const n = pages().length;
+    if (n === 0) {
+      config.pages = [{ id: 'p1', name: 'Principal', buttons: [] }];
+      currentPageIdx = 0;
+      return;
+    }
+    if (currentPageIdx < 0) currentPageIdx = 0;
+    if (currentPageIdx >= n) currentPageIdx = n - 1;
+  }
+
+  function setPage(idx) {
+    if (idx < 0 || idx >= pages().length) return;
+    currentPageIdx = idx;
+    render();
+  }
+
+  function newPageId() {
+    const taken = new Set(pages().map(p => p.id));
+    let i = 1;
+    while (taken.has(`p${i}`)) i++;
+    return `p${i}`;
+  }
+
+  function addPage() {
+    const id = newPageId();
+    pages().push({ id, name: `Página ${pages().length + 1}`, buttons: [] });
+    currentPageIdx = pages().length - 1;
+    saveConfig().then(render);
+  }
+
+  // --- Rendering ----------------------------------------------------------
+
+  function render() {
+    renderTabs();
+    renderGrid();
+  }
+
+  function renderTabs() {
+    tabsEl.innerHTML = '';
+    pages().forEach((p, i) => {
+      const tab = document.createElement('button');
+      tab.className = 'tab' + (i === currentPageIdx ? ' active' : '');
+      tab.textContent = p.name || `Página ${i + 1}`;
+      tab.addEventListener('click', () => {
+        if (editMode && i === currentPageIdx) {
+          openPageEditor(i);
+        } else {
+          setPage(i);
+        }
+      });
+      tabsEl.appendChild(tab);
+    });
+    if (editMode) {
+      const plus = document.createElement('button');
+      plus.className = 'tab tab-add';
+      plus.textContent = '+';
+      plus.title = 'Añadir página';
+      plus.addEventListener('click', addPage);
+      tabsEl.appendChild(plus);
+    }
+  }
 
   function renderGrid() {
     const { cols, rows } = config.grid || { cols: 4, rows: 4 };
@@ -111,13 +174,14 @@
     grid.style.setProperty('--rows', rows);
     grid.innerHTML = '';
 
+    const page = currentPage();
     const total = cols * rows;
-    const byId = new Map((config.buttons || []).map(b => [b.id, b]));
+    const byId = new Map((page?.buttons || []).map(b => [b.id, b]));
 
     for (let i = 0; i < total; i++) {
       const id = `b${i + 1}`;
       const btn = byId.get(id);
-      const tile = document.createElement('button');
+      const tile = document.createElement('div');
       tile.className = 'tile' + (btn ? '' : ' empty');
       tile.dataset.id = id;
       if (btn) {
@@ -126,43 +190,156 @@
       } else {
         tile.textContent = '+';
       }
-      tile.addEventListener('click', () => onTileClick(id));
+      attachTileHandlers(tile, id);
       grid.appendChild(tile);
     }
   }
 
-  function onTileClick(id) {
+  // --- Tile interaction (tap + drag) --------------------------------------
+
+  const DRAG_THRESHOLD_PX = 10;
+
+  function attachTileHandlers(tile, id) {
+    let startX = 0, startY = 0;
+    let dragging = false;
+    let ghost = null;
+    let lastTarget = null;
+    let pointerActive = false;
+    let pressTimer = null;
+
+    function cleanup() {
+      pointerActive = false;
+      dragging = false;
+      if (ghost) { ghost.remove(); ghost = null; }
+      if (lastTarget) { lastTarget.classList.remove('drop-target'); lastTarget = null; }
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    }
+
+    tile.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      pointerActive = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      // En modo edición, después de 250ms si no ha habido movimiento, iniciamos drag.
+      if (editMode) {
+        pressTimer = setTimeout(() => {
+          if (pointerActive && !dragging) startDrag(e.clientX, e.clientY);
+        }, 250);
+      }
+    });
+
+    tile.addEventListener('pointermove', (e) => {
+      if (!pointerActive) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!dragging && editMode && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+        startDrag(e.clientX, e.clientY);
+      }
+      if (dragging) moveDrag(e.clientX, e.clientY);
+    });
+
+    tile.addEventListener('pointerup', (e) => {
+      if (!pointerActive) return;
+      const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
+      if (dragging) {
+        finishDrag(e.clientX, e.clientY);
+      } else if (moved < DRAG_THRESHOLD_PX) {
+        // Tap
+        onTileTap(id);
+      }
+      cleanup();
+    });
+
+    tile.addEventListener('pointercancel', cleanup);
+    tile.addEventListener('lostpointercapture', cleanup);
+
+    function startDrag(x, y) {
+      dragging = true;
+      tile.setPointerCapture?.(0);
+      tile.classList.add('dragging-source');
+      ghost = tile.cloneNode(true);
+      ghost.classList.add('drag-ghost');
+      ghost.style.width = tile.offsetWidth + 'px';
+      ghost.style.height = tile.offsetHeight + 'px';
+      document.body.appendChild(ghost);
+      moveDrag(x, y);
+      if (navigator.vibrate) navigator.vibrate(15);
+    }
+
+    function moveDrag(x, y) {
+      if (!ghost) return;
+      ghost.style.left = (x - ghost.offsetWidth / 2) + 'px';
+      ghost.style.top = (y - ghost.offsetHeight / 2) + 'px';
+      // Highlight tile bajo el cursor
+      ghost.style.pointerEvents = 'none';
+      const under = document.elementFromPoint(x, y);
+      const target = under?.closest?.('.tile');
+      if (target !== lastTarget) {
+        lastTarget?.classList.remove('drop-target');
+        if (target && target !== tile) target.classList.add('drop-target');
+        lastTarget = target && target !== tile ? target : null;
+      }
+    }
+
+    function finishDrag(x, y) {
+      const under = document.elementFromPoint(x, y);
+      const target = under?.closest?.('.tile');
+      tile.classList.remove('dragging-source');
+      if (target && target !== tile && target.dataset.id) {
+        swapButtons(id, target.dataset.id);
+      }
+    }
+  }
+
+  function onTileTap(id) {
     if (editMode) {
       openEditor(id);
       return;
     }
     const tile = grid.querySelector(`[data-id="${id}"]`);
-    if (tile) {
+    if (tile && !tile.classList.contains('empty')) {
       tile.classList.remove('flash');
       void tile.offsetWidth;
       tile.classList.add('flash');
     }
     if (navigator.vibrate) navigator.vibrate(10);
+    const page = currentPage();
+    if (!page) return;
+    const hasButton = (page.buttons || []).some(b => b.id === id);
+    if (!hasButton) return; // empty slot → no-op en modo normal
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       showToast('Sin conexión con el servidor');
       return;
     }
-    ws.send(JSON.stringify({ type: 'press', button_id: id }));
+    ws.send(JSON.stringify({ type: 'press', button_id: id, page_id: page.id }));
   }
 
-  // --- Editor -------------------------------------------------------------
+  function swapButtons(idA, idB) {
+    const page = currentPage();
+    if (!page) return;
+    const buttons = page.buttons || (page.buttons = []);
+    const a = buttons.find(b => b.id === idA);
+    const b = buttons.find(b => b.id === idB);
+    if (a) a.id = idB;
+    if (b) b.id = idA;
+    saveConfig().then(render);
+  }
+
+  // --- Editor de botón ----------------------------------------------------
 
   const edLabel = document.getElementById('ed-label');
   const edColor = document.getElementById('ed-color');
   const edActionType = document.getElementById('ed-action-type');
   const edParams = document.getElementById('ed-params');
   const edSave = document.getElementById('ed-save');
+  const edDelete = document.getElementById('ed-delete');
 
   edActionType.addEventListener('change', renderParamsForm);
 
   function openEditor(id) {
     editingId = id;
-    const button = (config.buttons || []).find(b => b.id === id) || {
+    const page = currentPage();
+    if (!page) return;
+    const button = (page.buttons || []).find(b => b.id === id) || {
       id, label: '', color: '#3b82f6', action: { type: '', params: {} }
     };
     edLabel.value = button.label || '';
@@ -236,7 +413,7 @@
       const sel = document.getElementById('ed-p-sound');
       return { index: parseInt(sel.value, 10) };
     }
-    if (t === 'soundpad_stop' || t === 'soundpad_next' || t === 'soundpad_previous') {
+    if (['soundpad_stop', 'soundpad_next', 'soundpad_previous'].includes(t)) {
       return {};
     }
     if (t === 'hotkey') {
@@ -262,31 +439,105 @@
   edSave.addEventListener('click', (e) => {
     e.preventDefault();
     const id = editingId;
+    const page = currentPage();
+    if (!page) { dialog.close(); return; }
+    const buttons = page.buttons || (page.buttons = []);
     const label = edLabel.value.trim();
     const color = edColor.value;
     const type = edActionType.value;
-    const buttons = config.buttons || (config.buttons = []);
-    let btn = buttons.find(b => b.id === id);
 
     if (!type && !label) {
-      // Vacío → borrar
-      config.buttons = buttons.filter(b => b.id !== id);
+      page.buttons = buttons.filter(b => b.id !== id);
     } else {
-      const action = type ? { type, params: collectParams() || {} } : null;
+      let btn = buttons.find(b => b.id === id);
       if (!btn) { btn = { id }; buttons.push(btn); }
-      btn.label = label;
+      btn.label = label || `Botón ${id.slice(1)}`;
       btn.color = color;
-      if (action) btn.action = action; else delete btn.action;
+      if (type) btn.action = { type, params: collectParams() || {} };
+      else delete btn.action;
     }
     dialog.close();
-    saveConfig().then(renderGrid);
+    saveConfig().then(render);
   });
+
+  edDelete.addEventListener('click', (e) => {
+    e.preventDefault();
+    const id = editingId;
+    const page = currentPage();
+    if (page) {
+      page.buttons = (page.buttons || []).filter(b => b.id !== id);
+    }
+    dialog.close();
+    saveConfig().then(render);
+  });
+
+  // --- Editor de página ---------------------------------------------------
+
+  const pgName = document.getElementById('pg-name');
+  const pgSave = document.getElementById('pg-save');
+  const pgDelete = document.getElementById('pg-delete');
+  const pgTitle = document.getElementById('pg-title');
+
+  function openPageEditor(idx) {
+    editingPageIdx = idx;
+    const p = pages()[idx];
+    pgTitle.textContent = `Editar página ${idx + 1}`;
+    pgName.value = p?.name || '';
+    pgDelete.disabled = pages().length <= 1;
+    pageDialog.showModal();
+  }
+
+  pgSave.addEventListener('click', (e) => {
+    e.preventDefault();
+    const p = pages()[editingPageIdx];
+    if (p) p.name = pgName.value.trim() || `Página ${editingPageIdx + 1}`;
+    pageDialog.close();
+    saveConfig().then(render);
+  });
+
+  pgDelete.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (pages().length <= 1) return;
+    if (!confirm(`¿Borrar la página "${pages()[editingPageIdx]?.name}" y todos sus botones?`)) {
+      e.stopPropagation();
+      return;
+    }
+    pages().splice(editingPageIdx, 1);
+    clampCurrentPage();
+    pageDialog.close();
+    saveConfig().then(render);
+  });
+
+  // --- Modo edición -------------------------------------------------------
 
   editBtn.addEventListener('click', () => {
     editMode = !editMode;
     document.body.classList.toggle('editing', editMode);
     editBtn.textContent = editMode ? '✓' : '✎';
-    showToast(editMode ? 'Modo edición: toca un botón' : 'Modo normal');
+    if (editMode) {
+      showToast('Edición: toca botón para editar, mantén pulsado para mover, toca pestaña activa para renombrar');
+    }
+    render();
+  });
+
+  // --- Swipe horizontal entre páginas -------------------------------------
+
+  let swipeStartX = 0, swipeStartY = 0, swipeActive = false;
+  const SWIPE_MIN_X = 60, SWIPE_MAX_Y = 40;
+
+  grid.addEventListener('pointerdown', (e) => {
+    if (editMode) return;
+    if (e.target !== grid) return; // solo si el toque empieza fuera de un tile
+    swipeActive = true; swipeStartX = e.clientX; swipeStartY = e.clientY;
+  });
+  grid.addEventListener('pointerup', (e) => {
+    if (!swipeActive) return;
+    swipeActive = false;
+    const dx = e.clientX - swipeStartX, dy = e.clientY - swipeStartY;
+    if (Math.abs(dx) >= SWIPE_MIN_X && Math.abs(dy) <= SWIPE_MAX_Y) {
+      if (dx < 0) setPage(currentPageIdx + 1);
+      else setPage(currentPageIdx - 1);
+    }
   });
 
   // --- UI helpers ---------------------------------------------------------
@@ -295,7 +546,7 @@
     toast.textContent = msg;
     toast.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.hidden = true, 2200);
+    toastTimer = setTimeout(() => toast.hidden = true, 2500);
   }
 
   // --- Init ---------------------------------------------------------------
@@ -304,21 +555,17 @@
     try {
       await loadSounds();
       await loadConfig();
-      renderGrid();
+      render();
     } catch (e) {
       console.error(e);
       showToast('Error cargando configuración');
     }
     connectWs();
-
-    // Mantener WS vivo
     setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'ping' }));
       }
     }, 25000);
-
-    // Registrar service worker (sólo si HTTPS o localhost)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
