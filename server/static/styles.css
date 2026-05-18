@@ -1,0 +1,201 @@
+:root {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --accent: #3b82f6;
+  --danger: #ef4444;
+  --ok: #10b981;
+  --gap: 10px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
+.brand {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: .5px;
+  color: var(--muted);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 6px currentColor;
+}
+.dot-on { background: var(--ok); color: var(--ok); }
+.dot-off { background: var(--danger); color: var(--danger); }
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.1);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.icon-btn:active { background: rgba(255,255,255,.05); }
+
+.grid {
+  display: grid;
+  gap: var(--gap);
+  padding: var(--gap);
+  height: calc(100% - 49px);
+  grid-template-columns: repeat(var(--cols, 4), 1fr);
+  grid-template-rows: repeat(var(--rows, 4), 1fr);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--tile, #334155);
+  color: white;
+  border-radius: 14px;
+  border: none;
+  padding: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.15;
+  cursor: pointer;
+  transition: transform .08s ease, filter .08s ease;
+  position: relative;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.tile:active {
+  transform: scale(.95);
+  filter: brightness(1.25);
+}
+
+.tile.empty {
+  background: rgba(255,255,255,.04);
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 26px;
+}
+
+.tile.flash::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: white;
+  opacity: .4;
+  animation: flash .25s ease-out forwards;
+}
+
+@keyframes flash {
+  to { opacity: 0; }
+}
+
+.toast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15,23,42,.95);
+  border: 1px solid rgba(255,255,255,.1);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 99;
+  max-width: 80vw;
+}
+
+.edit-dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  padding: 18px 20px;
+  width: min(420px, 90vw);
+}
+.edit-dialog::backdrop { background: rgba(0,0,0,.6); }
+
+.edit-dialog h2 { margin: 0 0 12px; font-size: 18px; }
+
+.edit-dialog label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+
+.edit-dialog input[type=text],
+.edit-dialog input[type=number],
+.edit-dialog select {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid rgba(255,255,255,.1);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.edit-dialog input[type=color] {
+  width: 60px; height: 32px; border: none; background: transparent; padding: 0;
+}
+
+.edit-dialog menu {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 0;
+  margin: 18px 0 0;
+}
+
+.edit-dialog button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.edit-dialog button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* En modo edición, los tiles muestran un check de selección */
+body.editing .tile {
+  outline: 2px dashed rgba(255,255,255,.15);
+  outline-offset: -4px;
+}

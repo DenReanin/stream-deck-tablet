@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Stream Deck</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icon.svg" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">Stream Deck</div>
+    <div class="status">
+      <span id="conn-dot" class="dot dot-off"></span>
+      <span id="conn-text">conectando…</span>
+    </div>
+    <button id="edit-btn" class="icon-btn" title="Editar">✎</button>
+  </header>
+
+  <main id="grid" class="grid"></main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <dialog id="edit-dialog" class="edit-dialog">
+    <form method="dialog">
+      <h2>Editar botón</h2>
+
+      <label>Etiqueta
+        <input id="ed-label" type="text" maxlength="32" />
+      </label>
+
+      <label>Color
+        <input id="ed-color" type="color" />
+      </label>
+
+      <label>Acción
+        <select id="ed-action-type">
+          <option value="">— sin acción —</option>
+          <option value="soundpad_play">Soundpad: reproducir sonido</option>
+          <option value="soundpad_stop">Soundpad: parar</option>
+          <option value="soundpad_next">Soundpad: siguiente</option>
+          <option value="soundpad_previous">Soundpad: anterior</option>
+          <option value="hotkey">Atajo de teclado</option>
+          <option value="launch_app">Lanzar aplicación</option>
+          <option value="run_script">Ejecutar script</option>
+          <option value="open_url">Abrir URL</option>
+        </select>
+      </label>
+
+      <div id="ed-params"></div>
+
+      <menu>
+        <button id="ed-cancel" value="cancel">Cancelar</button>
+        <button id="ed-save" value="save" class="primary">Guardar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
