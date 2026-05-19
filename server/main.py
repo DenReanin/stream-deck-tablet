@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import actions, config, plantillas as tmpl_module, import_sounds
+from . import actions, config, plantillas as tmpl_module
 from .obs_client import OBSError, get_client as get_obs_client
 from .soundpad_client import SoundpadError, get_client
 
@@ -26,6 +26,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
+# La librería obsws-python suelta tracebacks gordos cuando OBS no está
+# abierto. Como nosotros ya capturamos y reportamos el fallo, silenciamos
+# su logger para que la consola quede limpia.
+logging.getLogger("obsws_python.baseclient").setLevel(logging.CRITICAL)
 log = logging.getLogger("streamdeck")
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -61,10 +65,14 @@ async def lifespan(app: FastAPI):
     # choca con el de FastAPI si se llama directamente).
     mdns = await asyncio.to_thread(_start_mdns, PORT)
 
+    # Monitor que reintenta conectar con Soundpad y notifica cambios.
+    monitor_task = asyncio.create_task(_soundpad_monitor())
+
     log.info("Server URLs: %s", _local_urls(PORT))
     log.info("También accesible desde tablet (si soporta mDNS): http://streamdeck.local:%d", PORT)
     yield
     log.info("Shutting down")
+    monitor_task.cancel()
     if mdns is not None:
         try:
             await asyncio.to_thread(mdns.close)
@@ -72,6 +80,32 @@ async def lifespan(app: FastAPI):
             pass
     obs.disconnect()
     client.disconnect()
+
+
+async def _soundpad_monitor() -> None:
+    """Comprueba periódicamente si Soundpad está accesible. Si el estado
+    cambia, lo emite por WebSocket a todos los clientes conectados."""
+    last_state: bool | None = None
+    while True:
+        try:
+            await asyncio.sleep(3)
+            client = get_client()
+            if not client.connected:
+                await asyncio.to_thread(client.connect)
+            elif client.connected:
+                # Ping ligero para validar que el pipe sigue vivo.
+                try:
+                    await asyncio.to_thread(client.get_version)
+                except SoundpadError:
+                    pass  # client.connected ya se habrá puesto a False
+            current = client.connected
+            if current != last_state:
+                last_state = current
+                await _broadcast({"type": "soundpad_status", "connected": current})
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            log.exception("Soundpad monitor error")
 
 
 app = FastAPI(title="Stream Deck Tablet", lifespan=lifespan)
@@ -111,32 +145,48 @@ async def update_config(payload: dict) -> dict:
     return {"ok": True}
 
 
-@app.post("/api/sounds/import")
-def import_sounds_endpoint(payload: dict | None = None) -> dict:
-    """Importa los archivos de audio de la carpeta configurada en
-    Soundpad. Si se pasa 'folder' en el payload, persiste ese nuevo
-    valor en config.json antes de importar."""
-    payload = payload or {}
-    if "folder" in payload and payload["folder"]:
-        cfg = config.load()
-        cfg["sounds_folder"] = payload["folder"]
-        config.save(cfg)
-    result = import_sounds.import_folder()
-    if not result.get("ok"):
-        raise HTTPException(503, result.get("error", "Import failed"))
-    return result
+@app.get("/api/soundpad/categories")
+def get_soundpad_categories() -> dict:
+    client = get_client()
+    if not client.connected and not client.connect():
+        raise HTTPException(503, "Soundpad not reachable")
+    try:
+        return {"categories": client.get_categories()}
+    except SoundpadError as exc:
+        raise HTTPException(503, str(exc))
 
 
 @app.post("/api/config/autogen")
-def autogen_config() -> dict:
-    """Genera una config inicial con un botón por sonido de Soundpad."""
+def autogen_config(mode: str = "flat") -> dict:
+    """Regenera la config a partir del estado actual de Soundpad.
+
+    mode='flat'        → reparte todos los sonidos en páginas del tamaño del grid
+    mode='categories'  → una página por categoría real de Soundpad
+    """
     client = get_client()
     if not client.connected and not client.connect():
         raise HTTPException(503, "Soundpad not reachable")
     sounds = client.get_sound_list()
     current = config.load()
     grid = current.get("grid", {"cols": 4, "rows": 4})
-    new = config.autogen_from_sounds(sounds, grid["cols"], grid["rows"])
+
+    if mode == "categories":
+        try:
+            categories = client.get_categories()
+        except SoundpadError as exc:
+            raise HTTPException(503, str(exc))
+        new = config.autogen_from_categories(
+            categories, sounds, grid["cols"], grid["rows"]
+        )
+    elif mode == "flat":
+        new = config.autogen_from_sounds(sounds, grid["cols"], grid["rows"])
+    else:
+        raise HTTPException(400, f"Unknown mode: {mode}")
+
+    # Preservar campos no-button del config existente (obs, sounds_folder, etc.)
+    for key in current:
+        if key not in new and key not in ("grid", "pages", "buttons"):
+            new[key] = current[key]
     config.save(new)
     return new
 

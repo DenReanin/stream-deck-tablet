@@ -111,6 +111,48 @@ class SoundpadClient:
     def play_next(self) -> str:
         return _strip_status(self.send("DoPlayNextSound()"))
 
+    def get_categories(self) -> list[dict]:
+        """Devuelve la lista plana de categorías visibles con sus sonidos.
+
+        Cada categoría es {index, name, sound_indexes: [...]} con los
+        índices de sonido en el orden de Soundpad. Las categorías marcadas
+        como `hidden="true"` (p. ej. "Todos los sonidos") se omiten.
+        """
+        raw = self.send("GetCategories(true, false)")
+        xml_start = raw.find("<?xml")
+        if xml_start < 0:
+            xml_start = raw.find("<Categories")
+        if xml_start < 0:
+            return []
+        try:
+            root = ET.fromstring(raw[xml_start:])
+        except ET.ParseError as exc:
+            log.error("Failed to parse categories XML: %s", exc)
+            return []
+        out: list[dict] = []
+        for cat in root.iter("Category"):
+            if (cat.get("hidden") or "").lower() == "true":
+                continue
+            try:
+                idx = int(cat.get("index", "-1"))
+            except ValueError:
+                continue
+            name = cat.get("name", "")
+            if not name or idx < 0:
+                continue
+            sound_indexes: list[int] = []
+            for s in cat.findall("Sound"):
+                try:
+                    sound_indexes.append(int(s.get("index", "0")))
+                except ValueError:
+                    pass
+            out.append({
+                "index": idx,
+                "name": name,
+                "sound_indexes": sound_indexes,
+            })
+        return out
+
     def add_sound(self, path: str, index: int = -1, category_index: int = -1) -> str:
         r"""Añade un sonido a Soundpad. El path debe ser absoluto.
 

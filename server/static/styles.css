@@ -22,6 +22,7 @@ html, body {
   overscroll-behavior: none;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 header {
@@ -104,7 +105,7 @@ header {
 }
 .icon-btn:active { background: rgba(255,255,255,.05); }
 .icon-btn[title="Ajustes OBS"],
-.icon-btn[title="Importar sonidos"] { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
+.icon-btn[title="Plantillas"] { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
 
 .grid {
   display: grid;
@@ -378,3 +379,17 @@ body.editing .tab.active::after {
   color: var(--muted);
   margin-left: 6px;
 }
+
+.tmpl-regen {
+  width: 100%;
+  background: transparent;
+  color: var(--text);
+  border: 1px dashed rgba(255,255,255,.18);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tmpl-regen:active { background: rgba(255,255,255,.04); }
+
+.regen-actions { flex-wrap: wrap; gap: 6px; }

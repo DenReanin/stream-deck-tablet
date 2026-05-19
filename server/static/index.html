@@ -21,9 +21,8 @@
       <span id="conn-dot" class="dot dot-off"></span>
       <span id="conn-text">conectando…</span>
     </div>
-    <button id="import-btn" class="icon-btn hidden" title="Importar sonidos">Importar</button>
     <button id="obs-btn" class="icon-btn hidden" title="Ajustes OBS">OBS</button>
-    <button id="tmpl-btn" class="icon-btn hidden" title="Plantillas">📋</button>
+    <button id="tmpl-btn" class="icon-btn hidden" title="Plantillas">Plantillas</button>
     <button id="edit-btn" class="icon-btn" title="Editar">✎</button>
   </header>
 
@@ -127,12 +126,33 @@
     </form>
   </dialog>
 
+  <!-- Diálogo: regenerar páginas desde Soundpad -->
+  <dialog id="regen-dialog" class="edit-dialog">
+    <form method="dialog">
+      <h2>Regenerar páginas</h2>
+      <p class="muted">
+        Reemplaza las páginas actuales por unas nuevas creadas a partir del
+        estado actual de Soundpad. Esto borra las páginas existentes y su
+        organización.
+      </p>
+      <menu class="regen-actions">
+        <button id="regen-cancel" value="cancel">Cancelar</button>
+        <button id="regen-flat" value="flat">Sonidos en orden</button>
+        <button id="regen-cats" value="categories" class="primary">Por categorías</button>
+      </menu>
+    </form>
+  </dialog>
+
   <!-- Diálogo: selector de plantillas -->
   <dialog id="tmpl-dialog" class="edit-dialog tmpl-dialog">
     <form method="dialog">
       <h2>Plantillas</h2>
       <p class="muted">Aplica una plantilla como página nueva.</p>
       <div id="tmpl-list" class="tmpl-list"></div>
+      <hr style="border: none; border-top: 1px solid rgba(255,255,255,.06); margin: 14px 0 10px;" />
+      <button id="tmpl-regen-btn" type="button" class="tmpl-regen">
+        Regenerar páginas desde Soundpad
+      </button>
       <menu>
         <button id="tmpl-cancel" value="cancel">Cerrar</button>
       </menu>

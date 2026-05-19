@@ -13,7 +13,10 @@
   const tmplDialog = document.getElementById('tmpl-dialog');
   const tmplList = document.getElementById('tmpl-list');
   const obsBtn = document.getElementById('obs-btn');
-  const importBtn = document.getElementById('import-btn');
+  const regenDialog = document.getElementById('regen-dialog');
+  const regenFlat = document.getElementById('regen-flat');
+  const regenCats = document.getElementById('regen-cats');
+  const tmplRegenBtn = document.getElementById('tmpl-regen-btn');
   const obsDialog = document.getElementById('obs-dialog');
   const obsHost = document.getElementById('obs-host');
   const obsPort = document.getElementById('obs-port');
@@ -32,6 +35,16 @@
   let editingId = null;
   let editingPageIdx = -1;
   let toastTimer = null;
+
+  const AUTO_SOUNDS_ID = 'p_sounds';
+  const TILE_PALETTE = [
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+  ];
+
+  // Bloquear el menú contextual del navegador (compartir / guardar /
+  // imprimir al mantener pulsado en Android).
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // --- Vibration patterns -------------------------------------------------
   const VIB = {
@@ -81,6 +94,10 @@
           vibrate(VIB.error);
         }
         break;
+      case 'soundpad_status':
+        setConn(true, msg.connected ? 'conectado' : 'sin Soundpad');
+        if (msg.connected) loadSounds();
+        break;
       case 'config_updated':
         // No sobrescribir si el cambio viene de esta misma sesión (evita re-render molesto)
         // Aquí lo aceptamos directamente porque es schema completo
@@ -101,11 +118,6 @@
   async function loadConfig() {
     const r = await fetch('/api/config');
     config = await r.json();
-    const hasAnyButton = (config.pages || []).some(p => (p.buttons || []).length > 0);
-    if (!hasAnyButton) {
-      const auto = await fetch('/api/config/autogen', { method: 'POST' });
-      if (auto.ok) config = await auto.json();
-    }
     clampCurrentPage();
   }
 
@@ -116,6 +128,8 @@
       const data = await r.json();
       sounds = data.sounds || [];
     } catch { sounds = []; }
+    // Si estamos viendo la página automática, repinta.
+    if (currentPage()?.auto === 'soundpad') renderGrid();
   }
 
   async function saveConfig() {
@@ -134,7 +148,7 @@
   function clampCurrentPage() {
     const n = pages().length;
     if (n === 0) {
-      config.pages = [{ id: 'p1', name: 'Principal', buttons: [] }];
+      config.pages = [{ id: AUTO_SOUNDS_ID, name: 'Soundpad', auto: 'soundpad', buttons: [] }];
       currentPageIdx = 0;
       return;
     }
@@ -182,7 +196,8 @@
       tab.className = 'tab' + (i === currentPageIdx ? ' active' : '');
       tab.textContent = p.name || `Página ${i + 1}`;
       tab.addEventListener('click', () => {
-        if (editMode && i === currentPageIdx) {
+        const isAuto = p.auto === 'soundpad';
+        if (editMode && i === currentPageIdx && !isAuto) {
           openPageEditor(i);
         } else {
           setPage(i);
@@ -208,8 +223,29 @@
 
     const page = currentPage();
     const total = cols * rows;
-    const byId = new Map((page?.buttons || []).map(b => [b.id, b]));
 
+    // Página automática: refleja los primeros 'total' sonidos de Soundpad
+    // en su orden actual. No editable.
+    if (page?.auto === 'soundpad') {
+      for (let i = 0; i < total; i++) {
+        const sound = sounds[i];
+        const tile = document.createElement('div');
+        if (sound) {
+          tile.className = 'tile';
+          tile.dataset.soundIndex = sound.index;
+          tile.style.setProperty('--tile', TILE_PALETTE[i % TILE_PALETTE.length]);
+          tile.textContent = sound.title;
+        } else {
+          tile.className = 'tile empty';
+          tile.textContent = '';
+        }
+        attachTileHandlers(tile, `auto_${i}`, /* editable */ false);
+        grid.appendChild(tile);
+      }
+      return;
+    }
+
+    const byId = new Map((page?.buttons || []).map(b => [b.id, b]));
     for (let i = 0; i < total; i++) {
       const id = `b${i + 1}`;
       const btn = byId.get(id);
@@ -235,7 +271,7 @@
       } else {
         tile.textContent = '+';
       }
-      attachTileHandlers(tile, id);
+      attachTileHandlers(tile, id, /* editable */ true);
       grid.appendChild(tile);
     }
   }
@@ -244,7 +280,7 @@
 
   const DRAG_THRESHOLD_PX = 10;
 
-  function attachTileHandlers(tile, id) {
+  function attachTileHandlers(tile, id, editable = true) {
     let startX = 0, startY = 0;
     let dragging = false;
     let ghost = null;
@@ -265,8 +301,9 @@
       pointerActive = true;
       startX = e.clientX;
       startY = e.clientY;
-      // En modo edición, después de 250ms si no ha habido movimiento, iniciamos drag.
-      if (editMode) {
+      // En modo edición y si la página lo permite, después de 250ms
+      // sin movimiento, iniciamos drag.
+      if (editable && editMode) {
         pressTimer = setTimeout(() => {
           if (pointerActive && !dragging) startDrag(e.clientX, e.clientY);
         }, 250);
@@ -276,7 +313,7 @@
     tile.addEventListener('pointermove', (e) => {
       if (!pointerActive) return;
       const dx = e.clientX - startX, dy = e.clientY - startY;
-      if (!dragging && editMode && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+      if (!dragging && editable && editMode && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
         startDrag(e.clientX, e.clientY);
       }
       if (dragging) moveDrag(e.clientX, e.clientY);
@@ -337,26 +374,62 @@
 
   function onTileTap(id) {
     if (swipeJustHappened) return;
+    const page = currentPage();
+    if (!page) return;
+
+    // Página automática Soundpad: id = 'auto_<i>' y disparamos
+    // soundpad_play con el índice real del sonido.
+    if (page.auto === 'soundpad') {
+      const i = parseInt(id.replace('auto_', ''), 10);
+      const sound = sounds[i];
+      if (!sound) return;
+      flashTile(id);
+      vibrate(VIB.tap);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        showToast('Sin conexión con el servidor');
+        return;
+      }
+      ws.send(JSON.stringify({
+        type: 'action',
+        action: { type: 'soundpad_play', params: { index: sound.index } },
+      }));
+      return;
+    }
+
     if (editMode) {
       openEditor(id);
       return;
     }
     const tile = grid.querySelector(`[data-id="${id}"]`);
     if (tile && !tile.classList.contains('empty')) {
-      tile.classList.remove('flash');
-      void tile.offsetWidth;
-      tile.classList.add('flash');
+      flashTile(id);
     }
     vibrate(VIB.tap);
-    const page = currentPage();
-    if (!page) return;
     const hasButton = (page.buttons || []).some(b => b.id === id);
-    if (!hasButton) return; // empty slot → no-op en modo normal
+    if (!hasButton) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       showToast('Sin conexión con el servidor');
       return;
     }
     ws.send(JSON.stringify({ type: 'press', button_id: id, page_id: page.id }));
+  }
+
+  function flashTile(id) {
+    const sel = id.startsWith('auto_')
+      ? `[data-sound-index]`
+      : `[data-id="${id}"]`;
+    // Para auto, buscamos el tile por posición en el grid.
+    let tile;
+    if (id.startsWith('auto_')) {
+      const i = parseInt(id.replace('auto_', ''), 10);
+      tile = grid.children[i];
+    } else {
+      tile = grid.querySelector(`[data-id="${id}"]`);
+    }
+    if (!tile) return;
+    tile.classList.remove('flash');
+    void tile.offsetWidth;
+    tile.classList.add('flash');
   }
 
   function swapButtons(idA, idB) {
@@ -661,7 +734,6 @@
     editBtn.textContent = editMode ? '✓' : '✎';
     tmplBtn.classList.toggle('hidden', !editMode);
     obsBtn.classList.toggle('hidden', !editMode);
-    importBtn.classList.toggle('hidden', !editMode);
     if (editMode) {
       showToast('Edición: toca botón para editar, mantén pulsado para mover, toca pestaña activa para renombrar');
     }
@@ -735,41 +807,45 @@
 
   obsBtn.addEventListener('click', openObsDialog);
 
-  // --- Importar sonidos a Soundpad ---------------------------------------
+  // --- Regenerar páginas desde Soundpad ----------------------------------
 
-  importBtn.addEventListener('click', async () => {
-    importBtn.disabled = true;
-    const original = importBtn.textContent;
-    importBtn.textContent = '…';
+  tmplRegenBtn?.addEventListener('click', () => {
+    tmplDialog.close();
+    regenDialog.showModal();
+  });
+
+  async function applyRegen(mode) {
     try {
-      const r = await fetch('/api/sounds/import', {
+      const r = await fetch(`/api/config/autogen?mode=${encodeURIComponent(mode)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: r.statusText }));
-        showToast(`Error: ${err.detail || 'fallo al importar'}`);
+        showToast(`Error: ${err.detail || 'no se pudo regenerar'}`);
         return;
       }
-      const data = await r.json();
-      const added = data.added?.length ?? 0;
-      const skipped = data.skipped?.length ?? 0;
-      const errors = data.errors?.length ?? 0;
-      if (added === 0 && errors === 0) {
-        showToast(`Sin novedades. ${skipped} sonidos ya estaban.`);
-      } else {
-        showToast(`${added} añadidos, ${skipped} ya estaban` +
-          (errors ? `, ${errors} con error` : ''));
-      }
+      config = await r.json();
+      currentPageIdx = 0;
+      regenDialog.close();
       await loadSounds();
+      render();
+      showToast('Páginas regeneradas');
     } catch {
-      showToast('Error de red al importar');
-    } finally {
-      importBtn.disabled = false;
-      importBtn.textContent = original;
+      showToast('Error de red');
     }
+  }
+
+  regenFlat.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!confirm('Esto reemplaza las páginas actuales. ¿Seguir?')) return;
+    applyRegen('flat');
   });
+  regenCats.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!confirm('Esto reemplaza las páginas actuales. ¿Seguir?')) return;
+    applyRegen('categories');
+  });
+
 
   async function loadObsData() {
     try {
