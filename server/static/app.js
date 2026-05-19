@@ -12,16 +12,35 @@
   const tmplBtn = document.getElementById('tmpl-btn');
   const tmplDialog = document.getElementById('tmpl-dialog');
   const tmplList = document.getElementById('tmpl-list');
+  const obsBtn = document.getElementById('obs-btn');
+  const obsDialog = document.getElementById('obs-dialog');
+  const obsHost = document.getElementById('obs-host');
+  const obsPort = document.getElementById('obs-port');
+  const obsPassword = document.getElementById('obs-password');
+  const obsState = document.getElementById('obs-state');
+  const obsSave = document.getElementById('obs-save');
 
   // --- State --------------------------------------------------------------
   let ws = null;
   let config = { grid: { cols: 4, rows: 4 }, pages: [] };
   let sounds = [];
+  let obsScenes = [];
+  let obsInputs = [];
   let currentPageIdx = 0;
   let editMode = false;
   let editingId = null;
   let editingPageIdx = -1;
   let toastTimer = null;
+
+  // --- Vibration patterns -------------------------------------------------
+  const VIB = {
+    tap: 10,
+    longPress: 18,
+    error: [25, 60, 25],
+  };
+  function vibrate(pattern) {
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  }
 
   // --- WebSocket ----------------------------------------------------------
 
@@ -56,7 +75,10 @@
         break;
       case 'press_result':
       case 'action_result':
-        if (msg.ok === false) showToast(`Error: ${msg.error || 'acción falló'}`);
+        if (msg.ok === false) {
+          showToast(`Error: ${msg.error || 'acción falló'}`);
+          vibrate(VIB.error);
+        }
         break;
       case 'config_updated':
         // No sobrescribir si el cambio viene de esta misma sesión (evita re-render molesto)
@@ -189,7 +211,20 @@
       tile.dataset.id = id;
       if (btn) {
         tile.style.setProperty('--tile', btn.color || '#334155');
-        tile.textContent = btn.label || `Botón ${i + 1}`;
+        const label = btn.label || `Botón ${i + 1}`;
+        if (btn.icon) {
+          tile.classList.add('with-icon');
+          const ic = document.createElement('div');
+          ic.className = 'tile-icon';
+          ic.textContent = btn.icon;
+          const lb = document.createElement('div');
+          lb.className = 'tile-label';
+          lb.textContent = label;
+          tile.appendChild(ic);
+          tile.appendChild(lb);
+        } else {
+          tile.textContent = label;
+        }
       } else {
         tile.textContent = '+';
       }
@@ -265,7 +300,7 @@
       ghost.style.height = tile.offsetHeight + 'px';
       document.body.appendChild(ghost);
       moveDrag(x, y);
-      if (navigator.vibrate) navigator.vibrate(15);
+      vibrate(VIB.longPress);
     }
 
     function moveDrag(x, y) {
@@ -294,6 +329,7 @@
   }
 
   function onTileTap(id) {
+    if (swipeJustHappened) return;
     if (editMode) {
       openEditor(id);
       return;
@@ -304,7 +340,7 @@
       void tile.offsetWidth;
       tile.classList.add('flash');
     }
-    if (navigator.vibrate) navigator.vibrate(10);
+    vibrate(VIB.tap);
     const page = currentPage();
     if (!page) return;
     const hasButton = (page.buttons || []).some(b => b.id === id);
@@ -331,6 +367,7 @@
 
   const edLabel = document.getElementById('ed-label');
   const edColor = document.getElementById('ed-color');
+  const edIcon = document.getElementById('ed-icon');
   const edActionType = document.getElementById('ed-action-type');
   const edParams = document.getElementById('ed-params');
   const edSave = document.getElementById('ed-save');
@@ -347,6 +384,7 @@
     };
     edLabel.value = button.label || '';
     edColor.value = button.color || '#3b82f6';
+    edIcon.value = button.icon || '';
     edActionType.value = button.action?.type || '';
     renderParamsForm();
     fillParams(button.action?.params || {});
@@ -385,6 +423,40 @@
     } else if (t === 'sequence') {
       addTextarea('ed-p-steps', 'Pasos en JSON (lista de acciones)', 8,
         '[\n  { "type": "hotkey", "params": { "keys": ["ctrl","shift","m"] } },\n  { "type": "delay", "params": { "ms": 200 } },\n  { "type": "text_input", "params": { "text": "Hola" } }\n]');
+    } else if (t === 'obs_scene') {
+      const select = document.createElement('select');
+      select.id = 'ed-p-scene';
+      if (obsScenes.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = ''; opt.textContent = '(OBS no conectado o sin escenas)';
+        select.appendChild(opt);
+      }
+      obsScenes.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.name; opt.textContent = s.name;
+        select.appendChild(opt);
+      });
+      const label = document.createElement('label');
+      label.textContent = 'Escena';
+      label.appendChild(select);
+      edParams.appendChild(label);
+    } else if (t === 'obs_toggle_mute') {
+      const select = document.createElement('select');
+      select.id = 'ed-p-input';
+      if (obsInputs.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = ''; opt.textContent = '(OBS no conectado o sin fuentes de audio)';
+        select.appendChild(opt);
+      }
+      obsInputs.forEach(i => {
+        const opt = document.createElement('option');
+        opt.value = i.name; opt.textContent = i.name;
+        select.appendChild(opt);
+      });
+      const label = document.createElement('label');
+      label.textContent = 'Fuente de audio';
+      label.appendChild(select);
+      edParams.appendChild(label);
     }
   }
 
@@ -433,6 +505,12 @@
       if (Array.isArray(steps) && steps.length > 0) {
         document.getElementById('ed-p-steps').value = JSON.stringify(steps, null, 2);
       }
+    } else if (t === 'obs_scene' && params.scene) {
+      const sel = document.getElementById('ed-p-scene');
+      if (sel) sel.value = params.scene;
+    } else if (t === 'obs_toggle_mute' && params.input) {
+      const sel = document.getElementById('ed-p-input');
+      if (sel) sel.value = params.input;
     }
   }
 
@@ -482,6 +560,15 @@
         throw e;
       }
     }
+    if (t === 'obs_scene') {
+      return { scene: document.getElementById('ed-p-scene').value };
+    }
+    if (t === 'obs_toggle_mute') {
+      return { input: document.getElementById('ed-p-input').value };
+    }
+    if (['obs_toggle_stream', 'obs_toggle_record', 'obs_transition'].includes(t)) {
+      return {};
+    }
     return {};
   }
 
@@ -493,15 +580,17 @@
     const buttons = page.buttons || (page.buttons = []);
     const label = edLabel.value.trim();
     const color = edColor.value;
+    const icon = edIcon.value.trim();
     const type = edActionType.value;
 
-    if (!type && !label) {
+    if (!type && !label && !icon) {
       page.buttons = buttons.filter(b => b.id !== id);
     } else {
       let btn = buttons.find(b => b.id === id);
       if (!btn) { btn = { id }; buttons.push(btn); }
       btn.label = label || `Botón ${id.slice(1)}`;
       btn.color = color;
+      if (icon) btn.icon = icon; else delete btn.icon;
       if (type) btn.action = { type, params: collectParams() || {} };
       else delete btn.action;
     }
@@ -564,6 +653,7 @@
     document.body.classList.toggle('editing', editMode);
     editBtn.textContent = editMode ? '✓' : '✎';
     tmplBtn.classList.toggle('hidden', !editMode);
+    obsBtn.classList.toggle('hidden', !editMode);
     if (editMode) {
       showToast('Edición: toca botón para editar, mantén pulsado para mover, toca pestaña activa para renombrar');
     }
@@ -633,25 +723,112 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  // --- Swipe horizontal entre páginas -------------------------------------
+  // --- OBS settings -------------------------------------------------------
 
-  let swipeStartX = 0, swipeStartY = 0, swipeActive = false;
+  obsBtn.addEventListener('click', openObsDialog);
+
+  async function loadObsData() {
+    try {
+      const r = await fetch('/api/obs/scenes');
+      obsScenes = r.ok ? ((await r.json()).scenes || []) : [];
+    } catch { obsScenes = []; }
+    try {
+      const r = await fetch('/api/obs/inputs');
+      obsInputs = r.ok ? ((await r.json()).inputs || []) : [];
+    } catch { obsInputs = []; }
+  }
+
+  async function refreshObsStatus() {
+    try {
+      const r = await fetch('/api/obs/status');
+      const data = await r.json();
+      if (data.connected) {
+        const v = data.version || {};
+        obsState.textContent =
+          `Conectado a OBS ${v.obs_version || ''} (ws ${v.ws_version || ''}). ` +
+          `Stream: ${data.streaming ? 'on' : 'off'}, Rec: ${data.recording ? 'on' : 'off'}`;
+        obsState.style.color = 'var(--ok)';
+      } else {
+        obsState.textContent = 'No conectado. Revisa host, puerto y contraseña.';
+        obsState.style.color = 'var(--danger)';
+      }
+    } catch {
+      obsState.textContent = 'No se pudo consultar el estado.';
+      obsState.style.color = 'var(--danger)';
+    }
+  }
+
+  async function openObsDialog() {
+    const obsCfg = config.obs || {};
+    obsHost.value = obsCfg.host || 'localhost';
+    obsPort.value = obsCfg.port || 4455;
+    obsPassword.value = obsCfg.password || '';
+    obsState.textContent = 'Comprobando…';
+    obsDialog.showModal();
+    await refreshObsStatus();
+  }
+
+  obsSave.addEventListener('click', async (e) => {
+    e.preventDefault();
+    obsSave.disabled = true;
+    obsState.textContent = 'Conectando…';
+    try {
+      const r = await fetch('/api/obs/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: obsHost.value.trim() || 'localhost',
+          port: parseInt(obsPort.value, 10) || 4455,
+          password: obsPassword.value,
+        }),
+      });
+      const data = await r.json();
+      if (data.connected) {
+        await loadObsData();
+        await refreshObsStatus();
+        showToast('OBS conectado');
+        // Recargar config local para tener los datos OBS
+        const cr = await fetch('/api/config');
+        config = await cr.json();
+      } else {
+        obsState.textContent = 'No se pudo conectar. Comprueba OBS y la contraseña.';
+        obsState.style.color = 'var(--danger)';
+      }
+    } catch {
+      obsState.textContent = 'Error de red.';
+      obsState.style.color = 'var(--danger)';
+    } finally {
+      obsSave.disabled = false;
+    }
+  });
+
+  // --- Swipe horizontal entre páginas -------------------------------------
+  // Funciona aunque el toque empiece sobre un tile. Si detectamos un
+  // desplazamiento horizontal significativo, cambiamos de página y
+  // marcamos un flag para que el tap del tile no se dispare.
+
+  let swipeStart = null;
+  let swipeJustHappened = false;
   const SWIPE_MIN_X = 60, SWIPE_MAX_Y = 40;
 
-  grid.addEventListener('pointerdown', (e) => {
+  document.addEventListener('pointerdown', (e) => {
     if (editMode) return;
-    if (e.target !== grid) return; // solo si el toque empieza fuera de un tile
-    swipeActive = true; swipeStartX = e.clientX; swipeStartY = e.clientY;
-  });
-  grid.addEventListener('pointerup', (e) => {
-    if (!swipeActive) return;
-    swipeActive = false;
-    const dx = e.clientX - swipeStartX, dy = e.clientY - swipeStartY;
+    if (!grid.contains(e.target) && e.target !== grid) return;
+    swipeStart = { x: e.clientX, y: e.clientY };
+  }, true);
+
+  document.addEventListener('pointerup', (e) => {
+    if (!swipeStart) return;
+    const dx = e.clientX - swipeStart.x;
+    const dy = e.clientY - swipeStart.y;
+    swipeStart = null;
     if (Math.abs(dx) >= SWIPE_MIN_X && Math.abs(dy) <= SWIPE_MAX_Y) {
       if (dx < 0) setPage(currentPageIdx + 1);
       else setPage(currentPageIdx - 1);
+      swipeJustHappened = true;
+      setTimeout(() => { swipeJustHappened = false; }, 150);
     }
-  });
+  }, true);
 
   // --- UI helpers ---------------------------------------------------------
 
@@ -668,6 +845,7 @@
     try {
       await loadSounds();
       await loadConfig();
+      await loadObsData();
       render();
     } catch (e) {
       console.error(e);

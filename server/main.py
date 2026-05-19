@@ -5,6 +5,7 @@ o desde la raíz del proyecto:  ./.venv/Scripts/python.exe -m server.main
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import socket
@@ -16,7 +17,8 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import actions, config, templates as tmpl_module
+from . import actions, config, plantillas as tmpl_module
+from .obs_client import OBSError, get_client as get_obs_client
 from .soundpad_client import SoundpadError, get_client
 
 logging.basicConfig(
@@ -44,9 +46,31 @@ async def lifespan(app: FastAPI):
             "Soundpad not reachable. Open Soundpad and enable "
             "Preferences -> Remote Control."
         )
+
+    # Configurar OBS desde el config persistido (sin forzar conexión)
+    cfg = config.load()
+    obs_cfg = cfg.get("obs") or {}
+    obs = get_obs_client()
+    obs.configure(
+        obs_cfg.get("host", "localhost"),
+        obs_cfg.get("port", 4455),
+        obs_cfg.get("password", ""),
+    )
+
+    # Registrar mDNS en un thread (Zeroconf tiene su propio event loop y
+    # choca con el de FastAPI si se llama directamente).
+    mdns = await asyncio.to_thread(_start_mdns, PORT)
+
     log.info("Server URLs: %s", _local_urls(PORT))
+    log.info("También accesible desde tablet (si soporta mDNS): http://streamdeck.local:%d", PORT)
     yield
     log.info("Shutting down")
+    if mdns is not None:
+        try:
+            await asyncio.to_thread(mdns.close)
+        except Exception:
+            pass
+    obs.disconnect()
     client.disconnect()
 
 
@@ -99,6 +123,65 @@ def autogen_config() -> dict:
     new = config.autogen_from_sounds(sounds, grid["cols"], grid["rows"])
     config.save(new)
     return new
+
+
+# --- OBS -------------------------------------------------------------------
+
+@app.get("/api/obs/status")
+def obs_status() -> dict:
+    obs = get_obs_client()
+    out = {"connected": obs.connected}
+    if not obs.connected:
+        obs.connect()
+        out["connected"] = obs.connected
+    if obs.connected:
+        try:
+            out["version"] = obs.get_version()
+            out["streaming"] = obs.get_stream_status().get("active", False)
+            out["recording"] = obs.get_record_status().get("active", False)
+        except OBSError as exc:
+            out["error"] = str(exc)
+    return out
+
+
+@app.get("/api/obs/scenes")
+def obs_scenes() -> dict:
+    obs = get_obs_client()
+    if not obs.connected and not obs.connect():
+        raise HTTPException(503, "OBS not reachable")
+    try:
+        return {"scenes": obs.get_scenes()}
+    except OBSError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.get("/api/obs/inputs")
+def obs_inputs() -> dict:
+    obs = get_obs_client()
+    if not obs.connected and not obs.connect():
+        raise HTTPException(503, "OBS not reachable")
+    try:
+        return {"inputs": obs.get_inputs_audio()}
+    except OBSError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.post("/api/obs/connect")
+def obs_connect(payload: dict) -> dict:
+    """Guarda credenciales OBS y reintenta la conexión."""
+    host = payload.get("host", "localhost")
+    port = int(payload.get("port", 4455))
+    password = payload.get("password", "")
+    obs = get_obs_client()
+    obs.configure(host, port, password)
+
+    # Persistir en config.json
+    cfg = config.load()
+    cfg["obs"] = {"host": host, "port": port, "password": password}
+    config.save(cfg)
+
+    ok = obs.connect()
+    return {"ok": ok, "connected": obs.connected}
 
 
 # --- Templates -------------------------------------------------------------
@@ -289,6 +372,35 @@ def _primary_ip() -> str | None:
         return None
     finally:
         s.close()
+
+
+def _start_mdns(port: int):
+    """Registra un servicio mDNS para que la tablet pueda conectar como
+    http://streamdeck.local:<port> sin escribir la IP."""
+    try:
+        from zeroconf import IPVersion, ServiceInfo, Zeroconf
+    except ImportError:
+        log.info("zeroconf no instalado, mDNS desactivado")
+        return None
+    ip = _primary_ip()
+    if not ip:
+        return None
+    try:
+        zc = Zeroconf(ip_version=IPVersion.V4Only)
+        info = ServiceInfo(
+            "_http._tcp.local.",
+            "Stream Deck._http._tcp.local.",
+            addresses=[socket.inet_aton(ip)],
+            port=port,
+            properties={"path": "/"},
+            server="streamdeck.local.",
+        )
+        zc.register_service(info)
+        log.info("mDNS registrado como streamdeck.local en %s:%d", ip, port)
+        return zc
+    except Exception as exc:
+        log.warning("No se pudo registrar mDNS: %r", exc)
+        return None
 
 
 HOST = "0.0.0.0"

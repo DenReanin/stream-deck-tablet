@@ -21,6 +21,7 @@
       <span id="conn-dot" class="dot dot-off"></span>
       <span id="conn-text">conectando…</span>
     </div>
+    <button id="obs-btn" class="icon-btn hidden" title="Ajustes OBS">OBS</button>
     <button id="tmpl-btn" class="icon-btn hidden" title="Plantillas">📋</button>
     <button id="edit-btn" class="icon-btn" title="Editar">✎</button>
   </header>
@@ -56,7 +57,16 @@
           <option value="text_input">Escribir texto</option>
           <option value="delay">Pausa (ms)</option>
           <option value="sequence">Secuencia (JSON)</option>
+          <option value="obs_scene">OBS: cambiar escena</option>
+          <option value="obs_toggle_stream">OBS: toggle stream</option>
+          <option value="obs_toggle_record">OBS: toggle grabación</option>
+          <option value="obs_toggle_mute">OBS: toggle mute fuente</option>
+          <option value="obs_transition">OBS: transición</option>
         </select>
+      </label>
+
+      <label>Icono (emoji, opcional)
+        <input id="ed-icon" type="text" maxlength="4" placeholder="ej: 🎤" />
       </label>
 
       <div id="ed-params"></div>
@@ -82,6 +92,36 @@
         <button id="pg-delete" value="delete" class="danger">Borrar página</button>
         <button id="pg-cancel" value="cancel">Cancelar</button>
         <button id="pg-save" value="save" class="primary">Guardar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: ajustes OBS -->
+  <dialog id="obs-dialog" class="edit-dialog">
+    <form method="dialog">
+      <h2>OBS WebSocket</h2>
+      <p class="muted">
+        En OBS Studio: Tools → WebSocket Server Settings → Enable.
+        Anota el puerto y la contraseña que aparecen.
+      </p>
+
+      <label>Host
+        <input id="obs-host" type="text" value="localhost" />
+      </label>
+
+      <label>Puerto
+        <input id="obs-port" type="number" value="4455" min="1" max="65535" />
+      </label>
+
+      <label>Contraseña
+        <input id="obs-password" type="text" placeholder="(en blanco si no hay)" />
+      </label>
+
+      <p id="obs-state" class="muted">Estado: desconocido</p>
+
+      <menu>
+        <button id="obs-cancel" value="cancel">Cerrar</button>
+        <button id="obs-save" value="save" class="primary">Conectar</button>
       </menu>
     </form>
   </dialog>

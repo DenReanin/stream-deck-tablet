@@ -13,7 +13,7 @@ import logging
 from typing import Awaitable, Callable, Union
 
 from . import delay as _delay
-from . import hotkey, launch, soundpad, text, url
+from . import hotkey, launch, obs, soundpad, text, url
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +31,11 @@ ACTIONS: dict[str, ActionFn] = {
     "open_url": url.open_url,
     "text_input": text.type_text,
     "delay": _delay.wait,
+    "obs_scene": obs.set_scene,
+    "obs_toggle_stream": obs.toggle_stream,
+    "obs_toggle_record": obs.toggle_record,
+    "obs_toggle_mute": obs.toggle_mute,
+    "obs_transition": obs.transition,
 }
 
 

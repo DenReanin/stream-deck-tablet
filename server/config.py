@@ -23,6 +23,7 @@ CONFIG_PATH = Path(__file__).parent / "config.json"
 DEFAULT_CONFIG: dict[str, Any] = {
     "grid": {"cols": 4, "rows": 4},
     "pages": [{"id": "p1", "name": "Principal", "buttons": []}],
+    "obs": {"host": "localhost", "port": 4455, "password": ""},
 }
 
 

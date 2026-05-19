@@ -3,3 +3,4 @@ uvicorn[standard]>=0.32.0
 pywin32>=308; sys_platform == 'win32'
 pynput>=1.7.7
 zeroconf>=0.136.0
+obsws-python>=1.7.0
