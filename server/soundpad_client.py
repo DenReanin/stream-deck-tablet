@@ -111,6 +111,17 @@ class SoundpadClient:
     def play_next(self) -> str:
         return _strip_status(self.send("DoPlayNextSound()"))
 
+    def add_sound(self, path: str, index: int = -1, category_index: int = -1) -> str:
+        r"""Añade un sonido a Soundpad. El path debe ser absoluto.
+
+        index=-1 inserta al final. category_index=-1 usa la categoría activa.
+        Soundpad acepta paths Windows con backslashes normales en su API
+        de texto (no requiere escape JSON).
+        """
+        clean = path.replace('"', '\\"')
+        cmd = f'DoAddSound("{clean}", {index}, {category_index})'
+        return _strip_status(self.send(cmd))
+
     def get_sound_list(self) -> list[dict]:
         raw = self.send("GetSoundlist()")
         xml_start = raw.find("<?xml")

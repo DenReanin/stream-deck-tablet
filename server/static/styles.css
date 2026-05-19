@@ -103,7 +103,8 @@ header {
   flex-shrink: 0;
 }
 .icon-btn:active { background: rgba(255,255,255,.05); }
-.icon-btn[title="Ajustes OBS"] { font-size: 13px; font-weight: 600; letter-spacing: .5px; }
+.icon-btn[title="Ajustes OBS"],
+.icon-btn[title="Importar sonidos"] { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
 
 .grid {
   display: grid;

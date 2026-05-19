@@ -24,6 +24,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "grid": {"cols": 4, "rows": 4},
     "pages": [{"id": "p1", "name": "Principal", "buttons": []}],
     "obs": {"host": "localhost", "port": 4455, "password": ""},
+    "sounds_folder": r"C:\Users\denge\Music\sonidos",
 }
 
 
@@ -90,19 +91,23 @@ def _clone(d: dict) -> dict:
 
 
 def _migrate(data: dict) -> dict:
-    """Convierte schemas viejos al actual."""
-    if "pages" in data and isinstance(data["pages"], list):
-        return data  # ya es v2
-    # v1: { grid, buttons } -> v2: { grid, pages: [{id, name, buttons}] }
-    legacy_buttons = data.get("buttons") or []
-    grid = data.get("grid") or {"cols": 4, "rows": 4}
-    log.info("Migrating config from v1 (flat buttons) to v2 (pages)")
-    return {
-        "grid": grid,
-        "pages": [
-            {"id": "p1", "name": "Principal", "buttons": legacy_buttons}
-        ],
-    }
+    """Convierte schemas viejos al actual y rellena claves nuevas con defaults."""
+    # v1 -> v2: pasar de 'buttons' plano a 'pages'
+    if "pages" not in data or not isinstance(data.get("pages"), list):
+        legacy_buttons = data.get("buttons") or []
+        grid = data.get("grid") or {"cols": 4, "rows": 4}
+        log.info("Migrating config from v1 (flat buttons) to v2 (pages)")
+        data = {
+            "grid": grid,
+            "pages": [
+                {"id": "p1", "name": "Principal", "buttons": legacy_buttons}
+            ],
+        }
+    # Rellenar cualquier clave nueva del schema por defecto.
+    for key, value in DEFAULT_CONFIG.items():
+        if key not in data:
+            data[key] = _clone({key: value})[key]
+    return data
 
 
 def find_page(config: dict, page_id: str | None) -> dict | None:

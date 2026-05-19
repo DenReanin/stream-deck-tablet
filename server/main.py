@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import actions, config, plantillas as tmpl_module
+from . import actions, config, plantillas as tmpl_module, import_sounds
 from .obs_client import OBSError, get_client as get_obs_client
 from .soundpad_client import SoundpadError, get_client
 
@@ -109,6 +109,22 @@ async def update_config(payload: dict) -> dict:
     config.save(payload)
     await _broadcast({"type": "config_updated", "config": payload})
     return {"ok": True}
+
+
+@app.post("/api/sounds/import")
+def import_sounds_endpoint(payload: dict | None = None) -> dict:
+    """Importa los archivos de audio de la carpeta configurada en
+    Soundpad. Si se pasa 'folder' en el payload, persiste ese nuevo
+    valor en config.json antes de importar."""
+    payload = payload or {}
+    if "folder" in payload and payload["folder"]:
+        cfg = config.load()
+        cfg["sounds_folder"] = payload["folder"]
+        config.save(cfg)
+    result = import_sounds.import_folder()
+    if not result.get("ok"):
+        raise HTTPException(503, result.get("error", "Import failed"))
+    return result
 
 
 @app.post("/api/config/autogen")

@@ -13,6 +13,7 @@
   const tmplDialog = document.getElementById('tmpl-dialog');
   const tmplList = document.getElementById('tmpl-list');
   const obsBtn = document.getElementById('obs-btn');
+  const importBtn = document.getElementById('import-btn');
   const obsDialog = document.getElementById('obs-dialog');
   const obsHost = document.getElementById('obs-host');
   const obsPort = document.getElementById('obs-port');
@@ -660,6 +661,7 @@
     editBtn.textContent = editMode ? '✓' : '✎';
     tmplBtn.classList.toggle('hidden', !editMode);
     obsBtn.classList.toggle('hidden', !editMode);
+    importBtn.classList.toggle('hidden', !editMode);
     if (editMode) {
       showToast('Edición: toca botón para editar, mantén pulsado para mover, toca pestaña activa para renombrar');
     }
@@ -732,6 +734,42 @@
   // --- OBS settings -------------------------------------------------------
 
   obsBtn.addEventListener('click', openObsDialog);
+
+  // --- Importar sonidos a Soundpad ---------------------------------------
+
+  importBtn.addEventListener('click', async () => {
+    importBtn.disabled = true;
+    const original = importBtn.textContent;
+    importBtn.textContent = '…';
+    try {
+      const r = await fetch('/api/sounds/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: r.statusText }));
+        showToast(`Error: ${err.detail || 'fallo al importar'}`);
+        return;
+      }
+      const data = await r.json();
+      const added = data.added?.length ?? 0;
+      const skipped = data.skipped?.length ?? 0;
+      const errors = data.errors?.length ?? 0;
+      if (added === 0 && errors === 0) {
+        showToast(`Sin novedades. ${skipped} sonidos ya estaban.`);
+      } else {
+        showToast(`${added} añadidos, ${skipped} ya estaban` +
+          (errors ? `, ${errors} con error` : ''));
+      }
+      await loadSounds();
+    } catch {
+      showToast('Error de red al importar');
+    } finally {
+      importBtn.disabled = false;
+      importBtn.textContent = original;
+    }
+  });
 
   async function loadObsData() {
     try {
