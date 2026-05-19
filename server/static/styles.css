@@ -7,7 +7,7 @@
   --danger: #ef4444;
   --ok: #10b981;
   --gap: 10px;
-  --header-h: 57px;
+  --header-h: 52px;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
@@ -28,7 +28,7 @@ header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: var(--panel);
   border-bottom: 1px solid rgba(255,255,255,.05);
   height: var(--header-h);
@@ -36,7 +36,7 @@ header {
 
 .brand {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: .5px;
   color: var(--muted);
   flex-shrink: 0;
@@ -56,8 +56,8 @@ header {
   border: 1px solid rgba(255,255,255,.08);
   color: var(--muted);
   border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 7px 16px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -79,7 +79,7 @@ header {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
   flex-shrink: 0;
 }
@@ -97,13 +97,13 @@ header {
   border: 1px solid rgba(255,255,255,.1);
   color: var(--text);
   border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 16px;
+  padding: 7px 14px;
+  font-size: 17px;
   cursor: pointer;
   flex-shrink: 0;
 }
 .icon-btn:active { background: rgba(255,255,255,.05); }
-.icon-btn[title="Ajustes OBS"] { font-size: 12px; font-weight: 600; letter-spacing: .5px; }
+.icon-btn[title="Ajustes OBS"] { font-size: 13px; font-weight: 600; letter-spacing: .5px; }
 
 .grid {
   display: grid;
@@ -113,7 +113,14 @@ header {
   grid-template-columns: repeat(var(--cols, 4), 1fr);
   grid-template-rows: repeat(var(--rows, 4), 1fr);
   touch-action: pan-y;
+  will-change: transform, opacity;
 }
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateX(var(--slide-from, 36px)); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.grid.page-enter { animation: page-enter 220ms cubic-bezier(.22, .61, .36, 1); }
 
 .tile {
   display: flex;

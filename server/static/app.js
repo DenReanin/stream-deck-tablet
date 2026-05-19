@@ -143,8 +143,14 @@
 
   function setPage(idx) {
     if (idx < 0 || idx >= pages().length) return;
+    if (idx === currentPageIdx) { render(); return; }
+    const direction = idx > currentPageIdx ? 1 : -1;
     currentPageIdx = idx;
+    grid.style.setProperty('--slide-from', `${direction * 36}px`);
+    grid.classList.remove('page-enter');
     render();
+    void grid.offsetWidth;
+    grid.classList.add('page-enter');
   }
 
   function newPageId() {
