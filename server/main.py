@@ -8,7 +8,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import socket
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -39,17 +41,21 @@ STATIC_DIR = Path(__file__).parent / "static"
 async def lifespan(app: FastAPI):
     log.info("Starting Stream Deck server")
     client = get_client()
-    if client.connect():
-        try:
-            ver = client.get_version()
-            log.info("Soundpad version: %s", ver)
-        except SoundpadError as exc:
-            log.warning("Soundpad responded but version check failed: %s", exc)
+    monitor_task = None
+    if client.supported:
+        if client.connect():
+            try:
+                ver = client.get_version()
+                log.info("Soundpad version: %s", ver)
+            except SoundpadError as exc:
+                log.warning("Soundpad responded but version check failed: %s", exc)
+        else:
+            log.warning(
+                "Soundpad not reachable. Open Soundpad and enable "
+                "Preferences -> Remote Control."
+            )
     else:
-        log.warning(
-            "Soundpad not reachable. Open Soundpad and enable "
-            "Preferences -> Remote Control."
-        )
+        log.info("Soundpad disabled on %s (Windows named pipe only)", sys.platform)
 
     # Configurar OBS desde el config persistido (sin forzar conexión)
     cfg = config.load()
@@ -65,14 +71,16 @@ async def lifespan(app: FastAPI):
     # choca con el de FastAPI si se llama directamente).
     mdns = await asyncio.to_thread(_start_mdns, PORT)
 
-    # Monitor que reintenta conectar con Soundpad y notifica cambios.
-    monitor_task = asyncio.create_task(_soundpad_monitor())
+    # Monitor que reintenta conectar con Soundpad solo en plataformas compatibles.
+    if client.supported:
+        monitor_task = asyncio.create_task(_soundpad_monitor())
 
     log.info("Server URLs: %s", _local_urls(PORT))
     log.info("También accesible desde tablet (si soporta mDNS): http://streamdeck.local:%d", PORT)
     yield
     log.info("Shutting down")
-    monitor_task.cancel()
+    if monitor_task is not None:
+        monitor_task.cancel()
     if mdns is not None:
         try:
             await asyncio.to_thread(mdns.close)
@@ -115,9 +123,13 @@ app = FastAPI(title="Stream Deck Tablet", lifespan=lifespan)
 
 @app.get("/api/health")
 def health() -> dict:
+    client = get_client()
     return {
         "ok": True,
-        "soundpad_connected": get_client().connected,
+        "soundpad_connected": client.connected,
+        "soundpad_supported": client.supported,
+        "urls": _local_urls(PORT),
+        "platform": sys.platform,
     }
 
 
@@ -469,8 +481,8 @@ def _start_mdns(port: int):
         return None
 
 
-HOST = "0.0.0.0"
-PORT = 8765
+HOST = os.environ.get("STREAMDECK_HOST", "0.0.0.0")
+PORT = int(os.environ.get("STREAMDECK_PORT", "8765"))
 
 
 if __name__ == "__main__":

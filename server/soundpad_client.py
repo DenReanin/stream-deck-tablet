@@ -10,8 +10,12 @@ import threading
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-import pywintypes
-import win32file
+try:
+    import pywintypes
+    import win32file
+except ImportError:
+    pywintypes = None
+    win32file = None
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +32,13 @@ class SoundpadClient:
         self._handle = None
         self._lock = threading.Lock()
 
+    @property
+    def supported(self) -> bool:
+        return win32file is not None and pywintypes is not None
+
     def connect(self) -> bool:
+        if not self.supported:
+            return False
         with self._lock:
             if self._handle is not None:
                 return True
@@ -51,7 +61,7 @@ class SoundpadClient:
 
     def disconnect(self) -> None:
         with self._lock:
-            if self._handle is not None:
+            if self._handle is not None and win32file is not None:
                 try:
                     win32file.CloseHandle(self._handle)
                 except Exception:
@@ -63,6 +73,8 @@ class SoundpadClient:
         return self._handle is not None
 
     def _send_locked(self, command: str) -> str:
+        if not self.supported:
+            raise SoundpadError("Soundpad solo está disponible en Windows (named pipe)")
         if self._handle is None:
             raise SoundpadError("Not connected to Soundpad")
         try:
@@ -80,10 +92,8 @@ class SoundpadClient:
 
     def send(self, command: str) -> str:
         """Send a raw command; auto-connect once if not connected."""
-        with self._lock:
-            if self._handle is None:
-                # Try a single reconnect
-                pass
+        if not self.supported:
+            raise SoundpadError("Soundpad solo está disponible en Windows (named pipe)")
         if not self.connected and not self.connect():
             raise SoundpadError("Soundpad not running or remote control disabled")
         with self._lock:

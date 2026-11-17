@@ -1,0 +1,40 @@
+name: ArtCraft Release (Stream Deck Tablet)
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias y ejecutar tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r server/requirements.txt httpx
+          python probar_streamdeck.py
+
+      - name: Empaquetar para ArtCraft Hub
+        run: |
+          tar --exclude='.git' --exclude='.venv' --exclude='__pycache__' \
+            -czf stream-deck-tablet-linux-x86_64.tar.gz .
+          sha256sum stream-deck-tablet-linux-x86_64.tar.gz > stream-deck-tablet-linux-x86_64.tar.gz.sha256
+
+      - name: Publicar GitHub Release automática desde main
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "Stream Deck Tablet v1.0.${{ github.run_number }} (${{ github.sha }})"
+          generate_release_notes: true
+          files: |
+            stream-deck-tablet-linux-x86_64.tar.gz
+            stream-deck-tablet-linux-x86_64.tar.gz.sha256

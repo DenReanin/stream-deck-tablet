@@ -11,3 +11,7 @@ venv/
 *.log
 server/config.json
 config.local.json
+dist/
+build/
+*.spec
+probar_tmp/

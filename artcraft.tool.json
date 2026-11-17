@@ -1,0 +1,23 @@
+{
+  "id": "stream-deck-tablet",
+  "name": "Stream Deck Tablet",
+  "abbr": "SD",
+  "tagline": "Convierte cualquier tablet o móvil WiFi en un Stream Deck (OBS, Soundpad, Hotkeys, Macros y Apps)",
+  "category": "Streaming & Control",
+  "brandColor": "#8B5CF6",
+  "icon": "cpu",
+  "repo": "DenReanin/stream-deck-tablet",
+  "branch": "main",
+  "private": false,
+  "updateStrategy": {
+    "mode": "branch-tarball",
+    "postInstall": "bash ./run-stream-deck.sh --setup-only",
+    "requireMainCheckSuccess": false
+  },
+  "launch": {
+    "executable": "run-stream-deck.sh",
+    "args": [],
+    "workingDir": "bin",
+    "runInTerminal": false
+  }
+}

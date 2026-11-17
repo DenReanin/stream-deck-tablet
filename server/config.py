@@ -36,14 +36,14 @@ AUTO_PAGE_NAME = "Soundpad"
 def load() -> dict:
     if not CONFIG_PATH.exists():
         log.info("No config found at %s, using defaults", CONFIG_PATH)
-        return _clone(DEFAULT_CONFIG)
+        return _migrate(_clone(DEFAULT_CONFIG))
     try:
         with CONFIG_PATH.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return _migrate(data)
     except (OSError, json.JSONDecodeError) as exc:
         log.error("Failed to load config: %s — using defaults", exc)
-        return _clone(DEFAULT_CONFIG)
+        return _migrate(_clone(DEFAULT_CONFIG))
 
 
 def save(config: dict) -> None:
