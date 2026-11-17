@@ -26,7 +26,8 @@ jobs:
       - name: Empaquetar para ArtCraft Hub
         run: |
           tar --exclude='.git' --exclude='.venv' --exclude='__pycache__' \
-            -czf stream-deck-tablet-linux-x86_64.tar.gz .
+            -czf /tmp/stream-deck-tablet-linux-x86_64.tar.gz .
+          mv /tmp/stream-deck-tablet-linux-x86_64.tar.gz ./stream-deck-tablet-linux-x86_64.tar.gz
           sha256sum stream-deck-tablet-linux-x86_64.tar.gz > stream-deck-tablet-linux-x86_64.tar.gz.sha256
 
       - name: Publicar GitHub Release automática desde main
